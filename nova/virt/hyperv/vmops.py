@@ -23,17 +23,17 @@ import time
 
 from eventlet import timeout as etimeout
 from oslo.config import cfg
-from oslo.utils import excutils
-from oslo.utils import importutils
-from oslo.utils import units
 
 from nova.api.metadata import base as instance_metadata
 from nova import exception
 from nova.i18n import _, _LI, _LW
+from nova.openstack.common import excutils
 from nova.openstack.common import fileutils
+from nova.openstack.common import importutils
 from nova.openstack.common import log as logging
 from nova.openstack.common import loopingcall
 from nova.openstack.common import processutils
+from nova.openstack.common import units
 from nova.openstack.common import uuidutils
 from nova import utils
 from nova.virt import configdrive
@@ -43,6 +43,8 @@ from nova.virt.hyperv import ioutils
 from nova.virt.hyperv import utilsfactory
 from nova.virt.hyperv import vmutils
 from nova.virt.hyperv import volumeops
+from nova.virt.hyperv import utils
+
 
 LOG = logging.getLogger(__name__)
 
@@ -106,14 +108,12 @@ def check_admin_permissions(function):
 class VMOps(object):
     _vif_driver_class_map = {
         'nova.network.neutronv2.api.API':
-        'nova.virt.hyperv.vif.HyperVNeutronVIFDriver',
+        'nova.virt.hyperv.vif.HyperVOVSVIFDriver',
         'nova.network.api.API':
         'nova.virt.hyperv.vif.HyperVNovaNetworkVIFDriver',
     }
 
-    # The console log is stored in two files, each should have at most half of
-    # the maximum console log size.
-    _MAX_CONSOLE_LOG_FILE_SIZE = units.Mi / 2
+    _MAX_CONSOLE_BYTES = units.Mi
 
     def __init__(self):
         self._vmutils = utilsfactory.get_vmutils()
@@ -322,7 +322,7 @@ class VMOps(object):
         for vif in network_info:
             LOG.debug('Creating nic for instance', instance=instance)
             self._vmutils.create_nic(instance_name,
-                                     vif['id'],
+                                     utils.get_veth_name(vif['id']),
                                      vif['address'])
             self._vif_driver.plug(instance, vif)
 
@@ -418,6 +418,10 @@ class VMOps(object):
 
             if destroy_disks:
                 self._delete_disk_files(instance_name)
+
+            if network_info:
+                for vif in network_info:
+                    self._vif_driver.unplug(instance, vif)
         except Exception:
             with excutils.save_and_reraise_exception():
                 LOG.exception(_('Failed to destroy instance: %s'),
@@ -588,7 +592,7 @@ class VMOps(object):
         pipe_path = r'\\.\pipe\%s' % instance_uuid
 
         vm_log_writer = ioutils.IOThread(pipe_path, console_log_path,
-                                         self._MAX_CONSOLE_LOG_FILE_SIZE)
+                                         self._MAX_CONSOLE_BYTES)
         self._vm_log_writers[instance_uuid] = vm_log_writer
 
         vm_log_writer.start()
@@ -599,8 +603,7 @@ class VMOps(object):
 
         try:
             instance_log = ''
-            # Start with the oldest console log file.
-            for console_log_path in console_log_paths[::-1]:
+            for console_log_path in console_log_paths:
                 if os.path.exists(console_log_path):
                     with open(console_log_path, 'rb') as fp:
                         instance_log += fp.read()
@@ -651,5 +654,5 @@ class VMOps(object):
             vm_serial_conn = self._vmutils.get_vm_serial_port_connection(
                 instance_name)
             if vm_serial_conn:
-                instance_uuid = os.path.basename(vm_serial_conn)
+                instance_uuid = os.path.basename(vm_serial_conn[0])
                 self.log_vm_serial_output(instance_name, instance_uuid)
