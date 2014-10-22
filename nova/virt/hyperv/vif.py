@@ -21,6 +21,8 @@ from oslo.config import cfg
 from nova.openstack.common.gettextutils import _
 from nova.openstack.common import log as logging
 from nova.virt.hyperv import utilsfactory
+from nova.virt.hyperv import utils
+
 
 hyperv_opts = [
     cfg.StrOpt('vswitch_name',
@@ -81,3 +83,41 @@ class HyperVNovaNetworkVIFDriver(HyperVBaseVIFDriver):
     def unplug(self, instance, vif):
         #TODO(alepilotti) Not implemented
         pass
+
+
+class HyperVOVSVIFDriver(HyperVBaseVIFDriver):
+
+    def __init__(self):
+        self._vmutils = utilsfactory.get_vmutils()
+        self._netutils = utilsfactory.get_networkutils()
+
+    def get_bridge_name(self, vif):
+        return vif['network']['bridge']
+
+    def get_ovs_interfaceid(self, vif):
+        return vif.get('ovs_interfaceid') or vif['id']
+
+    def plug(self, instance, vif):
+        vswitch_path = self._netutils.get_external_vswitch(
+            CONF.hyperv.vswitch_name)
+
+        vm_name = instance['name']
+        LOG.debug('Creating vswitch port for instance: %s', vm_name)
+        if self._netutils.vswitch_port_needed():
+            vswitch_data = self._netutils.create_vswitch_port(vswitch_path,
+                                                              vm_name)
+        else:
+            vswitch_data = vswitch_path
+
+        nic_name = utils.get_veth_name(vif['id'])
+
+        self._vmutils.set_nic_connection(vm_name, nic_name, vswitch_data)
+        utils.create_ovs_vif_port(
+            self.get_bridge_name(vif),
+            nic_name,
+            self.get_ovs_interfaceid(vif),
+            vif['address'],
+            instance['uuid'])
+
+    def unplug(self, instance, vif):
+        utils.delete_ovs_vif_port(self.get_bridge_name(vif), utils.get_veth_name(vif['id']))

@@ -42,6 +42,8 @@ from nova.virt.hyperv import ioutils
 from nova.virt.hyperv import utilsfactory
 from nova.virt.hyperv import vmutils
 from nova.virt.hyperv import volumeops
+from nova.virt.hyperv import utils
+
 
 LOG = logging.getLogger(__name__)
 
@@ -105,7 +107,7 @@ def check_admin_permissions(function):
 class VMOps(object):
     _vif_driver_class_map = {
         'nova.network.neutronv2.api.API':
-        'nova.virt.hyperv.vif.HyperVNeutronVIFDriver',
+        'nova.virt.hyperv.vif.HyperVOVSVIFDriver',
         'nova.network.api.API':
         'nova.virt.hyperv.vif.HyperVNovaNetworkVIFDriver',
     }
@@ -311,7 +313,7 @@ class VMOps(object):
         for vif in network_info:
             LOG.debug(_('Creating nic for instance'), instance=instance)
             self._vmutils.create_nic(instance_name,
-                                     vif['id'],
+                                     utils.get_veth_name(vif['id']),
                                      vif['address'])
             self._vif_driver.plug(instance, vif)
 
@@ -403,6 +405,10 @@ class VMOps(object):
 
             if destroy_disks:
                 self._delete_disk_files(instance_name)
+
+            if network_info:
+                for vif in network_info:
+                    self._vif_driver.unplug(instance, vif)
         except Exception:
             with excutils.save_and_reraise_exception():
                 LOG.exception(_('Failed to destroy instance: %s'),
