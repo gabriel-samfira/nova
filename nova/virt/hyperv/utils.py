@@ -1,7 +1,7 @@
 import os
 
 from eventlet.green import subprocess
-from nova.i18n import _
+from nova.openstack.common.gettextutils import _
 from eventlet import greenthread
 
 from nova import exception

@@ -23,7 +23,6 @@ from nova.openstack.common import log as logging
 from nova.virt.hyperv import utilsfactory
 from nova.virt.hyperv import utils
 
-
 hyperv_opts = [
     cfg.StrOpt('vswitch_name',
                help='External virtual switch Name, '
@@ -112,6 +111,9 @@ class HyperVOVSVIFDriver(HyperVBaseVIFDriver):
         nic_name = utils.get_veth_name(vif['id'])
 
         self._vmutils.set_nic_connection(vm_name, nic_name, vswitch_data)
+
+    def plug_ovs(self, instance, vif):
+        nic_name = utils.get_veth_name(vif['id'])
         utils.create_ovs_vif_port(
             self.get_bridge_name(vif),
             nic_name,

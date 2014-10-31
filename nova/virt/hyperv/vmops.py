@@ -273,6 +273,9 @@ class VMOps(object):
                 self.attach_config_drive(instance, configdrive_path)
 
             self.power_on(instance)
+            for vif in network_info:
+                self._vif_driver.plug_ovs(instance, vif)
+
         except Exception:
             with excutils.save_and_reraise_exception():
                 self.destroy(instance)
