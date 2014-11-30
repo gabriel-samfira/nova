@@ -213,18 +213,22 @@ class VMOpsTestCase(test.NoDBTestCase):
     @mock.patch('nova.virt.hyperv.volumeops.VolumeOps.'
                 'ebs_root_in_block_devices')
     @mock.patch('nova.virt.hyperv.vmops.VMOps._delete_disk_files')
-    def _test_spawn(self, mock_delete_disk_files,
+    @mock.patch('nova.virt.hyperv.vif.get_vif_driver')
+    def _test_spawn(self, mock_get_vif_driver, mock_delete_disk_files,
                     mock_ebs_root_in_block_devices, mock_create_root_vhd,
                     mock_create_ephemeral_vhd, mock_create_instance,
                     mock_configdrive_required, mock_create_config_drive,
                     mock_attach_config_drive, mock_power_on, mock_destroy,
                     exists, boot_from_volume, configdrive_required, fail):
+        mock_vif_driver = mock_get_vif_driver()
         mock_instance = fake_instance.fake_instance_obj(self.context)
 
         fake_root_path = mock_create_root_vhd.return_value
         fake_root_path = None if boot_from_volume else fake_root_path
         fake_ephemeral_path = mock_create_ephemeral_vhd.return_value
         fake_config_drive_path = mock_create_config_drive.return_value
+        fake_network_info = {'id': mock.sentinel.ID,
+                             'address': mock.sentinel.ADDRESS}
 
         self._vmops._vmutils.vm_exists.return_value = exists
         mock_ebs_root_in_block_devices.return_value = boot_from_volume
@@ -239,13 +243,13 @@ class VMOpsTestCase(test.NoDBTestCase):
         elif fail is vmutils.HyperVException:
             self.assertRaises(vmutils.HyperVException, self._vmops.spawn,
                               self.context, mock_instance, None,
-                              [mock.sentinel.FILE], mock.sentinel.PASSWORD,
+                              [fake_network_info], mock.sentinel.PASSWORD,
                               mock.sentinel.INFO, mock.sentinel.DEV_INFO)
             mock_destroy.assert_called_once_with(mock_instance)
         else:
             self._vmops.spawn(self.context, mock_instance, None,
                               [mock.sentinel.FILE], mock.sentinel.PASSWORD,
-                              mock.sentinel.INFO, mock.sentinel.DEV_INFO)
+                              [fake_network_info], mock.sentinel.DEV_INFO)
             self._vmops._vmutils.vm_exists.assert_called_once_with(
                 mock_instance.name)
             mock_delete_disk_files.assert_called_once_with(
@@ -257,7 +261,7 @@ class VMOpsTestCase(test.NoDBTestCase):
                                                              mock_instance)
             mock_create_ephemeral_vhd.assert_called_once_with(mock_instance)
             mock_create_instance.assert_called_once_with(
-                mock_instance, mock.sentinel.INFO, mock.sentinel.DEV_INFO,
+                mock_instance, [fake_network_info], mock.sentinel.DEV_INFO,
                 fake_root_path, fake_ephemeral_path)
             mock_configdrive_required.assert_called_once_with(mock_instance)
             if configdrive_required:
@@ -267,6 +271,9 @@ class VMOpsTestCase(test.NoDBTestCase):
                 mock_attach_config_drive.assert_called_once_with(
                     mock_instance, fake_config_drive_path)
             mock_power_on.assert_called_once_with(mock_instance)
+            mock_vif_driver.post_start.assert_called_once_with(
+                mock_instance,
+                fake_network_info)
 
     def test_spawn(self):
         self._test_spawn(exists=False, boot_from_volume=False,
@@ -289,12 +296,13 @@ class VMOpsTestCase(test.NoDBTestCase):
         self._test_spawn(exists=False, boot_from_volume=True,
                          configdrive_required=False, fail=None)
 
+    @mock.patch('nova.virt.hyperv.vif.get_vif_driver')
     @mock.patch('nova.virt.hyperv.volumeops.VolumeOps'
                 '.attach_volumes')
-    def _test_create_instance(self, mock_attach_volumes, fake_root_path,
-                              fake_ephemeral_path, enable_instance_metrics):
-        mock_vif_driver = mock.MagicMock()
-        self._vmops._vif_driver = mock_vif_driver
+    def _test_create_instance(self, mock_attach_volumes, mock_get_vif_driver,
+                              fake_root_path, fake_ephemeral_path,
+                              enable_instance_metrics):
+        mock_vif_driver = mock_get_vif_driver()
         self.flags(enable_instance_metrics_collection=enable_instance_metrics,
                    group='hyperv')
         fake_network_info = {'id': mock.sentinel.ID,
@@ -328,7 +336,7 @@ class VMOpsTestCase(test.NoDBTestCase):
         self._vmops._vmutils.create_nic.assert_called_once_with(
             mock_instance.name, mock.sentinel.ID, mock.sentinel.ADDRESS)
         mock_vif_driver.plug.assert_called_once_with(mock_instance,
-                                                     fake_network_info)
+                                                         fake_network_info)
         mock_enable = self._vmops._vmutils.enable_vm_metrics_collection
         if enable_instance_metrics:
             mock_enable.assert_called_once_with(mock_instance.name)
