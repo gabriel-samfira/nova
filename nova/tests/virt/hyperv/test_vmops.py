@@ -198,6 +198,37 @@ class VMOpsTestCase(test.NoDBTestCase):
             mock.sentinel.FAKE_VM_NAME, vmops.SHUTDOWN_TIME_INCREMENT)
         self.assertFalse(result)
 
+    @mock.patch.object(pathutils.PathUtils, "copy")
+    @mock.patch.object(pathutils.PathUtils, "exists")
+    @mock.patch.object(pathutils.PathUtils, 'get_vm_console_log_paths')
+    def test_copy_vm_console_logs(self,
+                                  fake_get_vm_log_path,
+                                  fake_path_exists,
+                                  fake_path_copy):
+        fake_local_paths = (mock.sentinel.FAKE_PATH,
+                            mock.sentinel.FAKE_PATH_ARCHIVED)
+        fake_remote_paths = (mock.sentinel.FAKE_REMOTE_PATH,
+                             mock.sentinel.FAKE_REMOTE_PATH_ARCHIVED)
+
+        fake_get_vm_log_path.side_effect = [
+            fake_local_paths, fake_remote_paths]
+        fake_path_exists.side_effect = [True, False]
+
+        self._vmops.copy_vm_console_logs(mock.sentinel.FAKE_VM_NAME,
+                                         mock.sentinel.FAKE_DEST)
+
+        calls = [mock.call(mock.sentinel.FAKE_VM_NAME),
+                 mock.call(mock.sentinel.FAKE_VM_NAME,
+                           remote_server=mock.sentinel.FAKE_DEST)]
+        fake_get_vm_log_path.assert_has_calls(calls)
+
+        calls = [mock.call(mock.sentinel.FAKE_PATH),
+                 mock.call(mock.sentinel.FAKE_PATH_ARCHIVED)]
+        fake_path_exists.assert_has_calls(calls)
+
+        fake_path_copy.assert_called_once_with(
+            mock.sentinel.FAKE_PATH, mock.sentinel.FAKE_REMOTE_PATH)
+
     @mock.patch("__builtin__.open")
     @mock.patch("os.path.exists")
     @mock.patch.object(pathutils.PathUtils, 'get_vm_console_log_paths')
