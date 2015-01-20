@@ -23,6 +23,7 @@ if sys.platform == 'win32':
 
 class HostUtils(object):
     def __init__(self):
+        self._conn_cimv2 = None
         if sys.platform == 'win32':
             self._conn_cimv2 = wmi.WMI(moniker='//./root/cimv2')
 
@@ -68,7 +69,8 @@ class HostUtils(object):
         return map(int, version_str.split('.')) >= [major, minor, build]
 
     def get_windows_version(self):
-        return self._conn_cimv2.Win32_OperatingSystem()[0].Version
+        if self._conn_cimv2:
+            return self._conn_cimv2.Win32_OperatingSystem()[0].Version
 
     def get_local_ips(self):
         addr_info = socket.getaddrinfo(socket.gethostname(), None, 0, 0, 0)
