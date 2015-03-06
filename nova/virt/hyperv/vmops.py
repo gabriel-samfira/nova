@@ -265,7 +265,7 @@ class VMOps(object):
 
             self.power_on(instance)
             for vif in network_info:
-                vif_driver = self._get_vif_driver(vif.get('vif_type'))
+                vif_driver = self._get_vif_driver(vif.get('type'))
                 vif_driver.post_start(instance, vif)
 
         except Exception:
@@ -310,7 +310,7 @@ class VMOps(object):
             self._vmutils.create_nic(instance_name,
                                      vif['id'],
                                      vif['address'])
-            vif_driver = self._get_vif_driver(vif.get('vif_type'))
+            vif_driver = self._get_vif_driver(vif.get('type'))
             vif_driver.plug(instance, vif)
 
         if CONF.hyperv.enable_instance_metrics_collection:
@@ -402,7 +402,7 @@ class VMOps(object):
                 self._delete_disk_files(instance_name)
             if network_info:
                 for vif in network_info:
-                    vif_driver = self._get_vif_driver(vif.get('vif_type'))
+                    vif_driver = self._get_vif_driver(vif.get('type'))
                     vif_driver.unplug(instance, vif)
         except Exception:
             with excutils.save_and_reraise_exception():
